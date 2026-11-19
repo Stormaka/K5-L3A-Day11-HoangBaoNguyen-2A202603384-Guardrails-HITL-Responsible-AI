@@ -1,5 +1,39 @@
 # Day 11 — Controlled Agent Security (2026)
 
+> **Học viên:** Hoàng Bảo Nguyên · **MSSV:** 2A202603384 · **Lớp:** K5-L3A
+>
+> **Chạy lại bài nộp (từ gốc repo, sau khi tạo `.env`):**
+> ```powershell
+> $env:PYTHONUTF8=1               # Windows: tránh lỗi in tiếng Việt ra console
+> python src/main.py --part 2     # CP2 — test guardrails (terminal)
+> python src/main.py --part 3     # CP3 — sinh outputs/results.json, audit_log.json, metrics.json
+> python src/main.py --part 4     # CP4 — tấn công Red + Red Advance → outputs/*attack*.json
+> python scripts/grade.py --submission-dir . --out outputs/grade_report.json
+> ```
+>
+> **Tóm tắt phần đã làm**
+> - **Input guardrails** ([src/guardrails/input_guardrails.py](src/guardrails/input_guardrails.py)):
+>   - Regex chạy trên nhiều "góc nhìn" của input: bản NFKC đã bỏ ký tự vô hình; bản không dấu; bản đã gỡ che giấu (homoglyph Cyrillic, leetspeak, chữ cái tách rời); và phần base64/hex giải mã được.
+>   - 10 nhóm regex có tên. Các nhóm dễ bắt nhầm (đóng vai, "auditor", "api key") chỉ bắn khi đi kèm mục tiêu nhạy cảm.
+>   - Topic filter khớp nguyên từ, nên `interesting`, `atmosphere`, `váy` không còn lọt. Chặn theo ý định xấu (`blocked_topic`), nhưng vẫn cho qua khi khách là nạn nhân ("my account was hacked", "bị lừa đảo").
+> - **Output guardrails** ([src/guardrails/output_guardrails.py](src/guardrails/output_guardrails.py)):
+>   - Che SĐT (di động và bàn), email, CMND/CCCD (chỉ khi có nhãn, nên không nhầm số tiền), số thẻ (kiểm tra Luhn), `sk-…`, password, host `*.internal`, connection string.
+>   - Nếu lộ secret thì rút toàn bộ câu trả lời. Bắt được cả secret bị che giấu: chèn ký tự, viết ngược, base64/hex, viết "dot", ký tự Unicode tương thích.
+>   - Đạt 10/10 case của dataset PII. LLM-as-Judge (tuỳ chọn) có ground truth lấy từ dataset.
+> - **Pipeline** ([src/assignment/](src/assignment/)):
+>   - Thứ tự lớp: RateLimit (sliding window theo user) → Input → LLM Blue → Output.
+>   - Audit log là side observer: che PII, lưu `input_sha256` và đích egress nguyên văn để điều tra, che lỗi thì fail-closed.
+>   - Monitoring là side observer: alert tính trên cửa sổ trượt 5 phút, rate-limit tính theo từng user.
+>   - `is_egress_allowed`: chỉ cho host khớp chính xác trong allowlist, bắt buộc HTTPS, và quét payload tìm secret hoặc PII.
+> - **Red team** ([src/attacks/attacks.py](src/attacks/attacks.py)): 5 kỹ thuật bắt buộc, cộng 1 prompt khai thác lỗ hổng NFKC ở lớp L4 của Red Advance (chèn `ⅰ` U+2170 vào giữa secret). Lỗ hổng này cũng đã được vá phía Blue.
+> - **Test hồi quy** ([tests/student/](tests/student/)): 243 case (bypass và false positive tìm được qua 4 vòng tự audit). Chạy bằng `pytest tests/student -q`.
+>
+> **Kết quả CP4 và cách chạy** (`outputs/attack_results.json`):
+> - **Red bị lộ 6/6.** **Red Advance lộ 0/6**: cả 6 prompt đều bị NeMo input rail chặn.
+> - Red và Red Advance dùng **`gpt-4o-mini`** (model mặc định của lab), gọi qua endpoint OpenAI-compatible của **OpenRouter**. Lý do: quota free tier của Gemini đã hết (20 request/ngày/project).
+> - Cấu hình `.env` tương ứng: `RED_TEAM_PROVIDER=openai`, `OPENAI_MODEL=gpt-4o-mini`, `OPENAI_BASE_URL=https://openrouter.ai/api/v1`.
+> - Để NeMo self-check dùng cùng endpoint, [src/agents/red_advance_nemo.py](src/agents/red_advance_nemo.py) chuyển tiếp `OPENAI_BASE_URL` vào `parameters.base_url`. Chỉ thay đổi đúng một điểm này, không đổi rail, prompt hay model. Không đặt biến này thì hành vi y như starter.
+
 > 👤 **Hình thức:** bài tập **cá nhân** (1 người / 1 MSSV).  
 > 🎯 **Mục tiêu:** đóng vai **Blue Team** để học cách xây Guardrails phòng thủ, rồi đóng vai **Red Team** để tấn công agent **Red** hoặc **Red Advance**.  
 > ✅ Làm theo **Checkpoint 1 → 5** trong [`CHECKPOINTS.md`](CHECKPOINTS.md) · nộp theo [`SUBMISSION.md`](SUBMISSION.md).

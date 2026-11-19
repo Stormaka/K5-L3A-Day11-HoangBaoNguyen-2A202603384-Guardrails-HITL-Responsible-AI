@@ -1,0 +1,51 @@
+{
+  "total_requests": 39,
+  "blocked_requests": 21,
+  "block_rate": 0.5384615384615384,
+  "rate_limit_hits": 5,
+  "judge_checks": 0,
+  "judge_fails": 0,
+  "judge_fail_rate": 0.0,
+  "alerts": [
+    {
+      "metric": "block_rate",
+      "value": 0.5385,
+      "threshold": 0.5,
+      "message": "Block rate 54% over the last 300s (> 50%): possible attack campaign or over-blocking false positives — review audit log."
+    },
+    {
+      "metric": "rate_limit_hits",
+      "value": 5.0,
+      "threshold": 5.0,
+      "message": "Rate-limit hits ≥ 5 in 300s for user(s) ['burst-user']: possible flooding / cost attack."
+    }
+  ],
+  "generated_at": "2026-11-19T13:04:45.119815+00:00",
+  "window": {
+    "window_seconds": 300,
+    "requests": 39,
+    "blocked": 21,
+    "block_rate": 0.5384615384615384,
+    "judge_checks": 0,
+    "judge_fail_rate": 0.0,
+    "rate_limit_hits_by_user": {
+      "burst-user": 5
+    }
+  },
+  "blocked_by_layer": {
+    "input_guardrail:blocked_topic": 1,
+    "input_guardrail:empty_input": 2,
+    "input_guardrail:injection": 10,
+    "input_guardrail:input_too_long": 1,
+    "input_guardrail:off_topic": 2,
+    "rate_limiter": 5
+  },
+  "redacted_responses": 0,
+  "llm_errors": 0,
+  "thresholds": {
+    "block_rate": 0.5,
+    "rate_limit_hits_per_user": 5,
+    "judge_fail_rate": 0.3,
+    "window_seconds": 300
+  }
+}

@@ -23,6 +23,18 @@ class RateLimitPlugin(base_plugin.BasePlugin):
         self.user_windows: dict[str, deque] = defaultdict(deque)
         self.blocked_count = 0
         self.total_count = 0
+        self.last_wait_seconds = 0.0
+
+    @staticmethod
+    def _bucket_key(invocation_context) -> str:
+        """Per-user bucket; fall back to the session id so anonymous callers do
+        not all share (and exhaust) a single "anonymous" bucket."""
+        user_id = getattr(invocation_context, "user_id", None)
+        if user_id:
+            return str(user_id)
+        session = getattr(invocation_context, "session", None)
+        session_id = getattr(session, "id", None)
+        return f"session:{session_id}" if session_id else "anonymous"
 
     def _block_response(self, message: str) -> types.Content:
         return types.Content(
@@ -33,17 +45,35 @@ class RateLimitPlugin(base_plugin.BasePlugin):
     async def on_user_message_callback(self, *, invocation_context, user_message):
         """Return Content to block, or None to allow."""
         self.total_count += 1
-        user_id = getattr(invocation_context, "user_id", None) or "anonymous"
+        user_id = self._bucket_key(invocation_context)
         now = time.time()
         window = self.user_windows[user_id]
 
-        # TODO: Implement sliding window:
-        # 1. Pop timestamps older than (now - window_seconds) from the left
-        # 2. If len(window) >= max_requests:
-        #       wait = window_seconds - (now - window[0])
-        #       self.blocked_count += 1
-        #       return self._block_response(
-        #           f"Rate limit exceeded. Try again in {wait:.0f}s."
-        #       )
-        # 3. Else: append now, return None
-        raise NotImplementedError("Implement RateLimitPlugin.on_user_message_callback")
+        # 1. Sliding window: drop timestamps that fell out of the window
+        while window and window[0] <= now - self.window_seconds:
+            window.popleft()
+
+        # 2. Over budget → block WITHOUT calling the LLM (cost / flooding attack).
+        #    Blocked requests are not recorded, so a spammer cannot extend
+        #    their own lock-out forever — the window simply drains.
+        if len(window) >= self.max_requests:
+            wait = self.window_seconds - (now - window[0])
+            self.blocked_count += 1
+            self.last_wait_seconds = max(0.0, wait)
+            return self._block_response(
+                f"Rate limit exceeded ({self.max_requests} requests / "
+                f"{self.window_seconds}s). Try again in {max(1, round(wait))}s."
+            )
+
+        # 3. Within budget → record and let it through
+        window.append(now)
+        self.last_wait_seconds = 0.0
+        return None
+
+    def remaining(self, user_id: str = "anonymous") -> int:
+        """Requests still available for ``user_id`` in the current window."""
+        now = time.time()
+        window = self.user_windows[user_id]
+        while window and window[0] <= now - self.window_seconds:
+            window.popleft()
+        return max(0, self.max_requests - len(window))
